@@ -8,7 +8,7 @@ export const errorHandler = (
   err: AppError,
   req: Request,
   res: Response,
-  next: NextFunction // <-- required!
+  next: NextFunction, // <-- required!
 ) => {
   console.error(err);
 
