@@ -1,9 +1,24 @@
 import { Request, Response, NextFunction } from 'express';
+import { Forecast } from '../models/forecast';
+import { ForecastService } from '../service/forecastService';
+import { ForecastRepository } from '../repository/forecastRepository';
 
-export const getForecast = (req: Request, res: Response, fn: NextFunction) => {
+export const forecastService = new ForecastService(new ForecastRepository());
+
+export const getForecast = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  service: ForecastService = forecastService,
+) => {
   const { latlon } = req.params;
 
-  return res.status(200).json({
-    latlon,
-  });
+  try {
+    const forecast: Forecast = await service.getForecast(latlon);
+    return res.status(200).json({
+      data: { forecast },
+    });
+  } catch (err) {
+    next(err);
+  }
 };

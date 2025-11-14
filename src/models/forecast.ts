@@ -1,6 +1,16 @@
-export interface Forecast {
-  id: number;
+import { Characterization } from './characterization';
+
+export interface ForecastPeriod {
   name: string;
+  temperature: number;
+  temperatureUnit: string;
+  windSpeed: string;
+  windDirection: string;
+  shortForecast: string;
+  detailedForecast: string;
 }
 
-export let forecasts: Forecast[] = [];
+export interface Forecast {
+  characterization?: Characterization;
+  periods: ForecastPeriod[];
+}
