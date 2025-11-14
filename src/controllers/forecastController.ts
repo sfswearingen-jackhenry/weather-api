@@ -15,6 +15,9 @@ export const getForecast = async (
 
   try {
     const forecast: Forecast = await service.getForecast(latlon);
+    if (forecast.periods.length === 0) {
+      return res.status(404).json({ data: {} });
+    }
     return res.status(200).json({
       data: { forecast },
     });

@@ -1,75 +1,111 @@
-import { getForecast } from '../../src/controllers/forecastController';
-import { ForecastService } from '../../src/service/forecastService';
-import { Forecast } from '../../src/models/forecast';
-import { Characterization } from '../../src/models/characterization';
-import { Request, Response, NextFunction } from 'express';
+import { ForecastRepository } from '../../src/repository/forecastRepository';
 
-describe('getForecast controller', () => {
-  let req: Partial<Request>;
-  let res: Partial<Response>;
-  let next: jest.MockedFunction<NextFunction>;
-
-  const mockForecast: Forecast = {
-    characterization: Characterization.Cold,
-    periods: [],
-  };
+describe('ForecastRepository', () => {
+  let repo: ForecastRepository;
 
   beforeEach(() => {
-    req = { params: { latlon: '40.7128,-74.0060' } };
-    res = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn(),
-    };
-    next = jest.fn();
+    repo = new ForecastRepository();
+    global.fetch = jest.fn();
   });
 
-  it('should return 200 and forecast data', async () => {
-    const mockService: Partial<ForecastService> = {
-      getForecast: jest.fn().mockResolvedValue(mockForecast),
+  afterEach(() => {
+    jest.resetAllMocks();
+  });
+
+  test('fetches point and forecast successfully', async () => {
+    const mockPointResponse = {
+      properties: {
+        forecast: 'https://api.weather.gov/gridpoints/TEST/forecast',
+      },
     };
 
-    // Call controller with injected mock service
-    await getForecast(
-      req as Request,
-      res as Response,
-      next,
-      mockService as ForecastService,
+    const mockForecastResponse = {
+      properties: {
+        periods: [{ name: 'Tonight', temperature: 60 }],
+      },
+    };
+
+    (global.fetch as jest.Mock)
+      // First call → point metadata
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => mockPointResponse,
+      })
+      // Second call → forecast
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => mockForecastResponse,
+      });
+
+    const result = await repo.getForecast('40.0,-90.0');
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({
+      periods: mockForecastResponse.properties.periods,
+    });
+  });
+
+  test('throws on invalid lat/lon input', async () => {
+    await expect(repo.getForecast('not-a-coordinate')).rejects.toThrow(
+      'Invalid latlon format',
     );
-
-    expect(mockService.getForecast).toHaveBeenCalledWith('40.7128,-74.0060');
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({ data: { forecast: mockForecast } });
-    expect(next).not.toHaveBeenCalled();
   });
 
-  it('should call next with error if service throws', async () => {
-    const error = new Error('Service failure');
-    const mockService: Partial<ForecastService> = {
-      getForecast: jest.fn().mockRejectedValue(error),
-    };
+  test('returns empty periods array when point returns 404', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+    });
 
-    await getForecast(
-      req as Request,
-      res as Response,
-      next,
-      mockService as ForecastService,
+    const result = await repo.getForecast('40.0,-90.0');
+    expect(result).toEqual({ periods: [] });
+  });
+
+  test('throws on failed point request (non-404 error)', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+    });
+
+    await expect(repo.getForecast('40.0,-90.0')).rejects.toThrow(
+      'Failed to fetch point data: 500',
     );
-
-    expect(mockService.getForecast).toHaveBeenCalledWith('40.7128,-74.0060');
-    expect(next).toHaveBeenCalledWith(error);
-    expect(res.status).not.toHaveBeenCalled();
-    expect(res.json).not.toHaveBeenCalled();
   });
 
-  it('should throw if latlon param is missing', async () => {
-    req = { params: {} };
-    const mockService: Partial<ForecastService> = {
-      getForecast: jest.fn(),
-    };
+  test('throws when point response is missing forecast URL', async () => {
+    const mockPointBad = { properties: {} };
 
-    await getForecast(req as Request, res as Response, next);
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => mockPointBad,
+    });
 
-    // We expect getForecast not to be called and next not to throw
-    expect(mockService.getForecast).not.toHaveBeenCalled();
+    await expect(repo.getForecast('40.0,-90.0')).rejects.toThrow(
+      'Forecast URL not found',
+    );
+  });
+
+  test('throws on failed forecast fetch', async () => {
+    (global.fetch as jest.Mock)
+      // Point request
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          properties: { forecast: 'http://forecast-url' },
+        }),
+      })
+      // Forecast request fails
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+      });
+
+    await expect(repo.getForecast('40.0,-90.0')).rejects.toThrow(
+      'Failed to fetch forecast: 502',
+    );
   });
 });

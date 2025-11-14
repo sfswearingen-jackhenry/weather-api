@@ -31,7 +31,9 @@ export class ForecastRepository {
 
     const url = `https://api.weather.gov/points/${lat},${lon}`;
     const pointRes = await fetch(url, { headers: this.headers });
-    console.log(pointRes);
+    if (pointRes.status === 404) {
+      return { periods: [] };
+    }
     if (!pointRes.ok) {
       throw new Error(`Failed to fetch point data: ${pointRes.status}`);
     }
